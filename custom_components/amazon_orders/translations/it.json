@@ -43,14 +43,20 @@
   "options": {
     "step": {
       "init": {
-        "title": "Intervalli di aggiornamento",
+        "title": "Opzioni",
         "data": {
           "idle_interval": "Quando nessun pacco è in consegna",
-          "active_interval": "Quando un pacco è in consegna"
+          "active_interval": "Quando un pacco è in consegna",
+          "quiet_start": "Inizio pausa notturna",
+          "quiet_end": "Fine pausa notturna",
+          "show_destination": "Mostra destinatario e indirizzo"
         },
         "data_description": {
           "idle_interval": "Ogni quanto controllare su Amazon nuovi ordini e cambiamenti.",
-          "active_interval": "Intervalli molto brevi possono portare Amazon a bloccare le richieste."
+          "active_interval": "Intervalli molto brevi possono portare Amazon a bloccare le richieste.",
+          "quiet_start": "In questa fascia Amazon non viene controllato, salvo un pacco già in consegna. Con inizio e fine uguali la pausa è disattivata.",
+          "quiet_end": "In questa fascia Amazon non viene controllato, salvo un pacco già in consegna. Con inizio e fine uguali la pausa è disattivata.",
+          "show_destination": "Aggiunge nome, via e città del destinatario agli attributi dei sensori. Sono dati personali: lasciala spenta se la dashboard è visibile ad altri."
         }
       }
     }
@@ -89,6 +95,9 @@
       },
       "last_delivered": {
         "name": "Ultimo pacco consegnato"
+      },
+      "last_read": {
+        "name": "Ultima lettura da Amazon"
       }
     }
   }

@@ -2,3 +2,4 @@
 asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = ["quiet_hours: the test drives the quiet hours itself"]

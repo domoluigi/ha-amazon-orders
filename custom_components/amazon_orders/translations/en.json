@@ -43,14 +43,20 @@
   "options": {
     "step": {
       "init": {
-        "title": "Polling intervals",
+        "title": "Options",
         "data": {
           "idle_interval": "While no package is out for delivery",
-          "active_interval": "While a package is out for delivery"
+          "active_interval": "While a package is out for delivery",
+          "quiet_start": "Quiet hours start",
+          "quiet_end": "Quiet hours end",
+          "show_destination": "Show recipient and address"
         },
         "data_description": {
           "idle_interval": "How often Amazon is checked for new orders and for changes.",
-          "active_interval": "Very short intervals may make Amazon block the requests."
+          "active_interval": "Very short intervals may make Amazon block the requests.",
+          "quiet_start": "Amazon is not checked in these hours, unless a package is already out for delivery. Equal start and end turn quiet hours off.",
+          "quiet_end": "Amazon is not checked in these hours, unless a package is already out for delivery. Equal start and end turn quiet hours off.",
+          "show_destination": "Adds name, street and town of the recipient to the attributes of the sensors. They are personal data: leave it off if others can see the dashboard."
         }
       }
     }
@@ -89,6 +95,9 @@
       },
       "last_delivered": {
         "name": "Last delivered package"
+      },
+      "last_read": {
+        "name": "Last read from Amazon"
       }
     }
   }
