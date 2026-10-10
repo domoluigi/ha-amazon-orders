@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
@@ -162,6 +163,80 @@ def in_quiet_hours(now: time, start: time, end: time) -> bool:
     if start < end:
         return start <= now < end
     return now >= start or now < end
+
+
+# Month names in the dates of the tracking history ("mercoledì 8 ottobre").
+_MONTHS = {
+    name: number
+    for number, names in enumerate(
+        (
+            ("gennaio", "january"),
+            ("febbraio", "february"),
+            ("marzo", "march"),
+            ("aprile", "april"),
+            ("maggio", "may"),
+            ("giugno", "june"),
+            ("luglio", "july"),
+            ("agosto", "august"),
+            ("settembre", "september"),
+            ("ottobre", "october"),
+            ("novembre", "november"),
+            ("dicembre", "december"),
+        ),
+        start=1,
+    )
+    for name in names
+}
+_DAY_MONTH = re.compile(r"(\d{1,2})\s+([^\W\d_]+)")
+
+
+def event_date(text: str | None, today: date) -> date | None:
+    """Return the date of a tracking event, e.g. "mercoledì 8 ottobre".
+
+    The page gives no year: it is the latest one that does not put the date in
+    the future. None if the text has no day and month.
+    """
+    match = _DAY_MONTH.search(text or "")
+    if match is None:
+        return None
+    month = _MONTHS.get(match.group(2).lower())
+    if month is None:
+        return None
+    for year in (today.year, today.year - 1):
+        try:
+            result = date(year, month, int(match.group(1)))
+        except ValueError:
+            continue
+        if result <= today:
+            return result
+    return None
+
+
+def _event_minutes(text: str | None) -> int:
+    match = re.match(r"(\d{1,2})[:.](\d{2})", text or "")
+    return int(match.group(1)) * 60 + int(match.group(2)) if match else -1
+
+
+def latest_delivered(packages: list[Package], today: date) -> Package | None:
+    """Return the package delivered most recently.
+
+    The orders list is sorted by order date, and a package ordered earlier can
+    arrive later: the date of the latest tracking event decides. Packages
+    without a readable date come after the dated ones, in the order of the list.
+    """
+    best: Package | None = None
+    best_key: tuple[date, int] | None = None
+    for package in packages:
+        event = package.last_event
+        day = event_date(event.date_text, today) if event else None
+        if day is None:
+            if best is None:
+                best = package
+            continue
+        key = (day, _event_minutes(event.time_text))
+        if best_key is None or key > best_key:
+            best, best_key = package, key
+    return best
 
 
 def _parse_time(value: Any, default: str) -> time:
@@ -323,7 +398,7 @@ class AmazonOrdersCoordinator(DataUpdateCoordinator[AmazonOrdersData]):
 
     async def _async_read_packages(self, orders: list[Order]) -> AmazonOrdersData:
         in_transit: list[Package] = []
-        last_delivered: Package | None = None
+        delivered: list[Package] = []
         still_in_transit: dict[str, Tracking] = {}
         seen: set[str] = set()
         pending = 0
@@ -379,8 +454,7 @@ class AmazonOrdersCoordinator(DataUpdateCoordinator[AmazonOrdersData]):
                     if key not in self._delivered:
                         self._delivered[key] = tracking
                         store_changed = True
-                    if last_delivered is None:
-                        last_delivered = package
+                    delivered.append(package)
                 else:
                     still_in_transit[key] = tracking
                     in_transit.append(package)
@@ -404,7 +478,7 @@ class AmazonOrdersCoordinator(DataUpdateCoordinator[AmazonOrdersData]):
 
         return AmazonOrdersData(
             in_transit=tuple(in_transit),
-            last_delivered=last_delivered,
+            last_delivered=latest_delivered(delivered, dt_util.now().date()),
             pending=pending,
             read_at=dt_util.utcnow(),
         )

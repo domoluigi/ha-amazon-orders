@@ -11,6 +11,9 @@ from dataclasses import dataclass, field
 from typing import Any
 
 STATUS_DELIVERED = "DELIVERED"
+# States after which a package never moves again. PICKED_UP: collected by the
+# customer at a pickup point or locker (seen on amazon.it).
+FINAL_STATUSES = frozenset({STATUS_DELIVERED, "PICKED_UP"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,5 +128,5 @@ class Tracking:
 
     @property
     def is_delivered(self) -> bool:
-        """Return True when the package has been delivered."""
-        return STATUS_DELIVERED in (self.short_status, self.last_milestone)
+        """Return True when the package has been delivered or collected."""
+        return not FINAL_STATUSES.isdisjoint((self.short_status, self.last_milestone))
