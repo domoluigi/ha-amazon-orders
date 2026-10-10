@@ -150,9 +150,16 @@ def test_login_data_round_trip() -> None:
     data = LoginData(
         refresh_token="token",
         device_serial="SERIAL",
-        device_info={"device_name": "name"},
-        customer_info={"user_id": "id"},
+        device_info={"device_name": "Test's Home Assistant Amazon Orders"},
+        customer_info={"user_id": "id", "name": "Test User", "home_region": "EU"},
     )
 
-    assert LoginData.from_dict(data.as_dict()) == data
-    assert "password" not in data.as_dict()
+    stored = data.as_dict()
+    assert "password" not in stored
+    # The profile and the device name are not stored, only the account id.
+    assert stored["customer_info"] == {"user_id": "id"}
+    assert stored["device_info"] == {}
+    rebuilt = LoginData.from_dict(stored)
+    assert rebuilt.refresh_token == data.refresh_token
+    assert rebuilt.device_serial == data.device_serial
+    assert rebuilt.customer_info == {"user_id": "id"}

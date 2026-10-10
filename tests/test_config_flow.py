@@ -22,9 +22,14 @@ from custom_components.amazon_orders.const import (
     CONF_IDLE_INTERVAL,
     CONF_LOGIN_DATA,
     CONF_OTP,
+    CONF_QUIET_END,
+    CONF_QUIET_START,
+    CONF_SHOW_DESTINATION,
     CONF_SITE,
     DEFAULT_ACTIVE_INTERVAL,
     DEFAULT_IDLE_INTERVAL,
+    DEFAULT_QUIET_END,
+    DEFAULT_QUIET_START,
     DOMAIN,
 )
 
@@ -235,13 +240,29 @@ async def test_options_flow(hass: HomeAssistant, mock_amazon) -> None:
     assert defaults == {
         CONF_IDLE_INTERVAL: DEFAULT_IDLE_INTERVAL,
         CONF_ACTIVE_INTERVAL: DEFAULT_ACTIVE_INTERVAL,
+        CONF_QUIET_START: DEFAULT_QUIET_START,
+        CONF_QUIET_END: DEFAULT_QUIET_END,
+        CONF_SHOW_DESTINATION: False,
     }
 
     result = await hass.config_entries.options.async_configure(
-        result["flow_id"], {CONF_IDLE_INTERVAL: 600.0, CONF_ACTIVE_INTERVAL: 90.0}
+        result["flow_id"],
+        {
+            CONF_IDLE_INTERVAL: 600.0,
+            CONF_ACTIVE_INTERVAL: 90.0,
+            CONF_QUIET_START: "22:30:00",
+            CONF_QUIET_END: "06:30:00",
+            CONF_SHOW_DESTINATION: True,
+        },
     )
     await hass.async_block_till_done()
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options == {CONF_IDLE_INTERVAL: 600, CONF_ACTIVE_INTERVAL: 90}
+    assert entry.options == {
+        CONF_IDLE_INTERVAL: 600,
+        CONF_ACTIVE_INTERVAL: 90,
+        CONF_QUIET_START: "22:30:00",
+        CONF_QUIET_END: "06:30:00",
+        CONF_SHOW_DESTINATION: True,
+    }
     assert entry.state is ConfigEntryState.LOADED
