@@ -7,7 +7,14 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.amazon_orders.const import CONF_LOGIN_DATA, CONF_SITE, DOMAIN
+from custom_components.amazon_orders.const import (
+    CONF_LOGIN_DATA,
+    CONF_SHOW_DESTINATION,
+    CONF_SITE,
+    DOMAIN,
+    UNRECORDED_ATTRIBUTES,
+)
+from custom_components.amazon_orders.sensor import AmazonOrdersSensor
 
 from .conftest import (
     EMAIL,
@@ -33,12 +40,13 @@ KEYS = [
 ]
 
 
-async def _setup(hass: HomeAssistant) -> MockConfigEntry:
+async def _setup(hass: HomeAssistant, options: dict | None = None) -> MockConfigEntry:
     entry = MockConfigEntry(
         domain=DOMAIN,
         title=EMAIL,
         unique_id=UNIQUE_ID,
         data={CONF_SITE: SITE, "email": EMAIL, CONF_LOGIN_DATA: LOGIN_DATA.as_dict()},
+        options=options or {},
     )
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
@@ -65,6 +73,7 @@ async def test_entity_ids(hass: HomeAssistant, mock_amazon) -> None:
     ) == [
         "binary_sensor.amazon_package_in_transit",
         "sensor.amazon_last_delivered_package",
+        "sensor.amazon_last_read_from_amazon",
         "sensor.amazon_next_package_delivery",
         "sensor.amazon_next_package_last_event",
         "sensor.amazon_next_package_progress",
@@ -118,10 +127,7 @@ async def test_package_on_its_way(hass: HomeAssistant, mock_amazon) -> None:
             "status_detail": "Dettaglio",
             "last_event": "Spedito",
             "tracking_url": tracking_url(1),
-            # From the orders list: the tracking page has no address here.
-            "recipient": "Test User",
-            "delivery_city": "Roma",
-            "delivery_address": "Via Esempio 1, ROMA, RM 00100, Italia",
+            # Recipient and address are left out unless the option is on.
         }
     ]
 
@@ -154,6 +160,49 @@ async def test_package_on_its_way(hass: HomeAssistant, mock_amazon) -> None:
     assert delivered.attributes["status"] == "delivered"
 
     assert _state(hass, "package_in_transit", "binary_sensor").state == "on"
+    assert _state(hass, "last_read").state not in ("unknown", "unavailable")
+    for key in ("next_package_status", "last_delivered"):
+        attributes = _state(hass, key).attributes
+        for name in ("recipient", "delivery_city", "delivery_address"):
+            assert name not in attributes, (key, name)
+
+
+async def test_destination_shown_when_enabled(
+    hass: HomeAssistant, mock_amazon
+) -> None:
+    mock_amazon.get_orders.return_value = [make_order(1)]
+    mock_amazon.trackings[tracking_url(1)] = make_tracking(
+        "TEST_ON_ITS_WAY", steps=2, progress=80, expected="In arrivo domani"
+    )
+    await _setup(hass, {CONF_SHOW_DESTINATION: True})
+
+    # From the orders list: the tracking page has no address here.
+    destination = {
+        "recipient": "Test User",
+        "delivery_city": "Roma",
+        "delivery_address": "Via Esempio 1, ROMA, RM 00100, Italia",
+    }
+    (package,) = _state(hass, "packages_in_transit").attributes["packages"]
+    assert {key: package[key] for key in destination} == destination
+    status = _state(hass, "next_package_status").attributes
+    assert {key: status[key] for key in destination} == destination
+
+
+def test_personal_attributes_are_not_recorded() -> None:
+    expected = {
+        "packages",
+        "order_id",
+        "order_placed",
+        "items",
+        "tracking_url",
+        "last_event",
+        "location",
+        "recipient",
+        "delivery_city",
+        "delivery_address",
+    }
+    assert expected <= UNRECORDED_ATTRIBUTES
+    assert expected <= AmazonOrdersSensor._unrecorded_attributes
 
 
 async def test_entities_follow_the_updates(hass: HomeAssistant, mock_amazon) -> None:

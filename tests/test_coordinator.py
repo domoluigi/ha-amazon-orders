@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import timedelta
+from datetime import time, timedelta
+from unittest.mock import patch
 
 import pytest
 from homeassistant.config_entries import SOURCE_REAUTH, ConfigEntryState
@@ -29,7 +30,12 @@ from custom_components.amazon_orders.const import (
     EVENT_PACKAGE_UPDATE,
     MAX_NEW_TRACKING_PER_UPDATE,
 )
-from custom_components.amazon_orders.coordinator import Package, shipment_key
+from custom_components.amazon_orders.coordinator import (
+    AmazonOrdersCoordinator,
+    Package,
+    in_quiet_hours,
+    shipment_key,
+)
 
 from .conftest import (
     EMAIL,
@@ -409,3 +415,59 @@ def test_package_progress_without_steps() -> None:
         tracking=tracking,
     )
     assert package.progress == 50
+
+
+@pytest.mark.parametrize(
+    ("now", "start", "end", "quiet"),
+    [
+        ("23:30", "23:00", "07:00", True),
+        ("03:00", "23:00", "07:00", True),
+        ("07:00", "23:00", "07:00", False),
+        ("12:00", "23:00", "07:00", False),
+        ("22:59", "23:00", "07:00", False),
+        ("13:30", "13:00", "15:00", True),
+        ("15:00", "13:00", "15:00", False),
+        ("03:00", "00:00", "00:00", False),
+    ],
+)
+def test_in_quiet_hours(now: str, start: str, end: str, quiet: bool) -> None:
+    assert (
+        in_quiet_hours(
+            time.fromisoformat(now), time.fromisoformat(start), time.fromisoformat(end)
+        )
+        is quiet
+    )
+
+
+@pytest.mark.quiet_hours
+async def test_quiet_hours_read_nothing(hass: HomeAssistant, mock_amazon) -> None:
+    mock_amazon.get_orders.return_value = [make_order(1)]
+    mock_amazon.trackings[tracking_url(1)] = on_its_way(steps=2)
+    with patch.object(AmazonOrdersCoordinator, "_is_quiet", return_value=True):
+        # The first update reads even in the quiet hours.
+        coordinator = (await _setup(hass)).runtime_data
+        assert mock_amazon.get_orders.call_count == 1
+        read_at = coordinator.data.read_at
+        assert read_at is not None
+
+        await coordinator.async_refresh()
+
+    assert mock_amazon.get_orders.call_count == 1
+    assert mock_amazon.get_tracking.call_count == 1
+    assert coordinator.data.read_at == read_at
+    assert len(coordinator.data.in_transit) == 1
+    assert coordinator.update_interval == IDLE
+
+
+@pytest.mark.quiet_hours
+async def test_quiet_hours_ignored_while_out_for_delivery(
+    hass: HomeAssistant, mock_amazon
+) -> None:
+    mock_amazon.get_orders.return_value = [make_order(1)]
+    mock_amazon.trackings[tracking_url(1)] = on_its_way(steps=3)
+    with patch.object(AmazonOrdersCoordinator, "_is_quiet", return_value=True):
+        coordinator = (await _setup(hass)).runtime_data
+        await coordinator.async_refresh()
+
+    assert mock_amazon.get_orders.call_count == 2
+    assert coordinator.update_interval == ACTIVE
