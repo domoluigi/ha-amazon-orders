@@ -13,6 +13,9 @@ from custom_components.amazon_orders.const import (
     CONF_ACTIVE_INTERVAL,
     CONF_IDLE_INTERVAL,
     CONF_OTP,
+    CONF_QUIET_END,
+    CONF_QUIET_START,
+    CONF_SHOW_DESTINATION,
     CONF_SITE,
     SITES,
 )
@@ -79,6 +82,9 @@ def test_strings_used_by_the_flows() -> None:
     assert set(_load("en")["options"]["step"]["init"]["data"]) == {
         CONF_IDLE_INTERVAL,
         CONF_ACTIVE_INTERVAL,
+        CONF_QUIET_START,
+        CONF_QUIET_END,
+        CONF_SHOW_DESTINATION,
     }
     assert set(_load("en")["selector"][CONF_SITE]["options"]) == set(SITES)
 
