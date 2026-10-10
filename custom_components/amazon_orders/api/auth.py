@@ -63,12 +63,18 @@ class LoginData:
     customer_info: dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
-        """Return a JSON-serializable dict, to store in a config entry."""
+        """Return a JSON-serializable dict, to store in a config entry.
+
+        Of the profile Amazon sends back only the account id is kept: it
+        identifies the account across re-authentications. Names, regions and
+        the device name (which carries the user's first name) are not stored.
+        """
+        user_id = self.customer_info.get("user_id")
         return {
             "refresh_token": self.refresh_token,
             "device_serial": self.device_serial,
-            "device_info": dict(self.device_info),
-            "customer_info": dict(self.customer_info),
+            "device_info": {},
+            "customer_info": {"user_id": user_id} if user_id else {},
         }
 
     @classmethod
