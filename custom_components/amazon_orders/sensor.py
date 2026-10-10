@@ -7,14 +7,21 @@ from dataclasses import dataclass
 from typing import Any
 
 from homeassistant.components.sensor import (
+    SensorDeviceClass,
     SensorEntity,
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import PERCENTAGE
+from homeassistant.const import PERCENTAGE, EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
+from .const import (
+    CONF_SHOW_DESTINATION,
+    DEFAULT_SHOW_DESTINATION,
+    DESTINATION_ATTRIBUTES,
+    UNRECORDED_ATTRIBUTES,
+)
 from .coordinator import AmazonOrdersConfigEntry, AmazonOrdersData, Package
 from .entity import AmazonOrdersEntity
 
@@ -53,6 +60,21 @@ def package_attributes(package: Package | None) -> dict[str, Any]:
         "delivery_city": address.city if address else None,
         "delivery_address": address.street if address else None,
     }
+
+
+def without_destination(attributes: dict[str, Any]) -> dict[str, Any]:
+    """Return the attributes without name, street and town of the recipient."""
+    result = {
+        key: value
+        for key, value in attributes.items()
+        if key not in DESTINATION_ATTRIBUTES
+    }
+    if isinstance(result.get("packages"), list):
+        result["packages"] = [
+            without_destination(package) if isinstance(package, dict) else package
+            for package in result["packages"]
+        ]
+    return result
 
 
 def _text(value: str | None) -> str | None:
@@ -159,6 +181,13 @@ SENSORS: tuple[AmazonOrdersSensorDescription, ...] = (
         ),
         attributes_fn=lambda data: package_attributes(data.last_delivered),
     ),
+    AmazonOrdersSensorDescription(
+        key="last_read",
+        translation_key="last_read",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda data: data.read_at,
+    ),
 )
 
 
@@ -177,6 +206,7 @@ class AmazonOrdersSensor(AmazonOrdersEntity, SensorEntity):
     """A sensor reading the data of the coordinator."""
 
     entity_description: AmazonOrdersSensorDescription
+    _unrecorded_attributes = UNRECORDED_ATTRIBUTES
 
     def __init__(self, coordinator, description: AmazonOrdersSensorDescription) -> None:
         """Initialise the sensor."""
@@ -193,4 +223,9 @@ class AmazonOrdersSensor(AmazonOrdersEntity, SensorEntity):
         """Return the attributes of the sensor."""
         if self.entity_description.attributes_fn is None:
             return None
-        return self.entity_description.attributes_fn(self.coordinator.data)
+        attributes = self.entity_description.attributes_fn(self.coordinator.data)
+        if self.coordinator.config_entry.options.get(
+            CONF_SHOW_DESTINATION, DEFAULT_SHOW_DESTINATION
+        ):
+            return attributes
+        return without_destination(attributes)

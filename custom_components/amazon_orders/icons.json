@@ -29,6 +29,9 @@
       },
       "last_delivered": {
         "default": "mdi:package-variant-closed-check"
+      },
+      "last_read": {
+        "default": "mdi:clock-check-outline"
       }
     }
   }

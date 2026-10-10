@@ -30,6 +30,34 @@ MAX_IDLE_INTERVAL: Final = 3600
 MIN_ACTIVE_INTERVAL: Final = 60
 MAX_ACTIVE_INTERVAL: Final = 600
 
+# Quiet hours: while no package is out for delivery, Amazon is not checked
+# between these times (local time, "HH:MM:SS"). Equal values turn them off.
+CONF_QUIET_START: Final = "quiet_start"
+CONF_QUIET_END: Final = "quiet_end"
+DEFAULT_QUIET_START: Final = "23:00:00"
+DEFAULT_QUIET_END: Final = "07:00:00"
+
+# Name, street and town of the recipient are personal data: they are left out
+# of the attributes unless the user turns this option on.
+CONF_SHOW_DESTINATION: Final = "show_destination"
+DEFAULT_SHOW_DESTINATION: Final = False
+DESTINATION_ATTRIBUTES: Final = ("recipient", "delivery_city", "delivery_address")
+
+# Attributes kept out of the recorder: they identify orders, products or
+# places, and the dashboard needs them only while they are current.
+UNRECORDED_ATTRIBUTES: Final = frozenset(
+    {
+        "packages",
+        "order_id",
+        "order_placed",
+        "items",
+        "tracking_url",
+        "last_event",
+        "location",
+        *DESTINATION_ATTRIBUTES,
+    }
+)
+
 # A package is polled at the active interval from this many reached steps on.
 # Amazon shows four steps: ordered, shipped, out for delivery, delivered (on
 # amazon.it "Ordinato", "Spedito", "In consegna", "Consegnato").
