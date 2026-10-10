@@ -17,6 +17,7 @@ from homeassistant.const import CONF_EMAIL, CONF_PASSWORD
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import AbortFlow
 from homeassistant.helpers.selector import (
+    BooleanSelector,
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
@@ -26,6 +27,7 @@ from homeassistant.helpers.selector import (
     TextSelector,
     TextSelectorConfig,
     TextSelectorType,
+    TimeSelector,
 )
 
 from . import async_deregister_device, create_login_session
@@ -41,10 +43,16 @@ from .const import (
     CONF_IDLE_INTERVAL,
     CONF_LOGIN_DATA,
     CONF_OTP,
+    CONF_QUIET_END,
+    CONF_QUIET_START,
+    CONF_SHOW_DESTINATION,
     CONF_SITE,
     DEFAULT_ACTIVE_INTERVAL,
     DEFAULT_COUNTRY,
     DEFAULT_IDLE_INTERVAL,
+    DEFAULT_QUIET_END,
+    DEFAULT_QUIET_START,
+    DEFAULT_SHOW_DESTINATION,
     DOMAIN,
     MAX_ACTIVE_INTERVAL,
     MAX_IDLE_INTERVAL,
@@ -234,7 +242,7 @@ def _seconds_selector(minimum: int, maximum: int, step: int) -> NumberSelector:
 
 
 class AmazonOrdersOptionsFlow(OptionsFlowWithReload):
-    """Let the user tune the polling intervals; the entry reloads on save."""
+    """Let the user tune polling and privacy; the entry reloads on save."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -245,6 +253,9 @@ class AmazonOrdersOptionsFlow(OptionsFlowWithReload):
                 data={
                     CONF_IDLE_INTERVAL: int(user_input[CONF_IDLE_INTERVAL]),
                     CONF_ACTIVE_INTERVAL: int(user_input[CONF_ACTIVE_INTERVAL]),
+                    CONF_QUIET_START: user_input[CONF_QUIET_START],
+                    CONF_QUIET_END: user_input[CONF_QUIET_END],
+                    CONF_SHOW_DESTINATION: bool(user_input[CONF_SHOW_DESTINATION]),
                 }
             )
 
@@ -259,6 +270,20 @@ class AmazonOrdersOptionsFlow(OptionsFlowWithReload):
                     CONF_ACTIVE_INTERVAL,
                     default=options.get(CONF_ACTIVE_INTERVAL, DEFAULT_ACTIVE_INTERVAL),
                 ): _seconds_selector(MIN_ACTIVE_INTERVAL, MAX_ACTIVE_INTERVAL, 30),
+                vol.Required(
+                    CONF_QUIET_START,
+                    default=options.get(CONF_QUIET_START, DEFAULT_QUIET_START),
+                ): TimeSelector(),
+                vol.Required(
+                    CONF_QUIET_END,
+                    default=options.get(CONF_QUIET_END, DEFAULT_QUIET_END),
+                ): TimeSelector(),
+                vol.Required(
+                    CONF_SHOW_DESTINATION,
+                    default=options.get(
+                        CONF_SHOW_DESTINATION, DEFAULT_SHOW_DESTINATION
+                    ),
+                ): BooleanSelector(),
             }
         )
         return self.async_show_form(step_id="init", data_schema=schema)

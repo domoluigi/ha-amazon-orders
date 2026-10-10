@@ -2,15 +2,15 @@
   "domain": "amazon_orders",
   "name": "Amazon Orders",
   "codeowners": [
-    "@LordHenry76"
+    "@domoluigi"
   ],
   "config_flow": true,
-  "documentation": "https://github.com/LordHenry76/ha-amazon-orders",
+  "documentation": "https://github.com/domoluigi/ha-amazon-orders",
   "integration_type": "service",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/LordHenry76/ha-amazon-orders/issues",
+  "issue_tracker": "https://github.com/domoluigi/ha-amazon-orders/issues",
   "requirements": [
     "beautifulsoup4>=4.12.0"
   ],
-  "version": "0.1.0"
+  "version": "0.1.1"
 }

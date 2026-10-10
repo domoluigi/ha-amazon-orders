@@ -22,6 +22,7 @@ from custom_components.amazon_orders.api.models import (
     Tracking,
     TrackingEvent,
 )
+from custom_components.amazon_orders.coordinator import AmazonOrdersCoordinator
 
 from .fake_amazon import FakeAmazon
 
@@ -164,6 +165,19 @@ def make_order(
 def tracking_url(number: int) -> str:
     """Return the tracking URL of the shipment built by make_order."""
     return make_order(number).shipments[0].tracking_url
+
+
+@pytest.fixture(autouse=True)
+def not_quiet(request: pytest.FixtureRequest) -> Iterator[None]:
+    """Keep the tests independent of the time they run at: no quiet hours.
+
+    Tests marked ``quiet_hours`` drive the quiet hours themselves.
+    """
+    if request.node.get_closest_marker("quiet_hours"):
+        yield
+        return
+    with patch.object(AmazonOrdersCoordinator, "_is_quiet", return_value=False):
+        yield
 
 
 @pytest.fixture

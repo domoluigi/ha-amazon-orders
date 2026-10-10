@@ -80,7 +80,11 @@ async def test_diagnostics(hass: HomeAssistant, mock_amazon) -> None:
 
     assert result["entry"][CONF_SITE] == SITE
     assert result["entry"]["email"] == "**REDACTED**"
-    assert result["entry"][CONF_LOGIN_DATA]["customer_info"]["home_region"] == "EU"
+    # Only the account id is stored, and the diagnostics redact it.
+    assert result["entry"][CONF_LOGIN_DATA]["customer_info"] == {
+        "user_id": "**REDACTED**"
+    }
+    assert result["entry"][CONF_LOGIN_DATA]["device_info"] == {}
     assert result["options"] == {"idle_interval": 600, "active_interval": 90}
     assert result["update_interval"] == 600
     assert result["last_update_success"] is True

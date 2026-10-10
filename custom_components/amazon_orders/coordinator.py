@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
@@ -13,6 +13,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from .api import (
     Address,
@@ -30,8 +31,12 @@ from .const import (
     CAPTCHA_BACKOFF,
     CONF_ACTIVE_INTERVAL,
     CONF_IDLE_INTERVAL,
+    CONF_QUIET_END,
+    CONF_QUIET_START,
     DEFAULT_ACTIVE_INTERVAL,
     DEFAULT_IDLE_INTERVAL,
+    DEFAULT_QUIET_END,
+    DEFAULT_QUIET_START,
     DEFAULT_STEPS,
     DOMAIN,
     EVENT_PACKAGE_UPDATE,
@@ -120,6 +125,8 @@ class AmazonOrdersData:
     last_delivered: Package | None = None
     # Shipments whose tracking page has not been read yet.
     pending: int = 0
+    # When Amazon was last read successfully. Quiet hours do not change it.
+    read_at: datetime | None = None
 
     @property
     def next_package(self) -> Package | None:
@@ -143,6 +150,25 @@ def shipment_key(order: Order, shipment: Shipment) -> str:
     if shipment_id:
         return f"{order.order_id}:{shipment_id}:{package_index}"
     return f"{order.order_id}:{urlsplit(shipment.tracking_url or '').path}"
+
+
+def in_quiet_hours(now: time, start: time, end: time) -> bool:
+    """Return True if ``now`` falls in the quiet hours from ``start`` to ``end``.
+
+    The hours may cross midnight (23:00 to 07:00). Equal times mean no quiet hours.
+    """
+    if start == end:
+        return False
+    if start < end:
+        return start <= now < end
+    return now >= start or now < end
+
+
+def _parse_time(value: Any, default: str) -> time:
+    try:
+        return time.fromisoformat(str(value))
+    except ValueError:
+        return time.fromisoformat(default)
 
 
 def _tracking_to_dict(tracking: Tracking) -> dict[str, Any]:
@@ -218,6 +244,13 @@ class AmazonOrdersCoordinator(DataUpdateCoordinator[AmazonOrdersData]):
         self.active_interval = timedelta(
             seconds=entry.options.get(CONF_ACTIVE_INTERVAL, DEFAULT_ACTIVE_INTERVAL)
         )
+        self.quiet_start = _parse_time(
+            entry.options.get(CONF_QUIET_START, DEFAULT_QUIET_START),
+            DEFAULT_QUIET_START,
+        )
+        self.quiet_end = _parse_time(
+            entry.options.get(CONF_QUIET_END, DEFAULT_QUIET_END), DEFAULT_QUIET_END
+        )
         super().__init__(
             hass,
             _LOGGER,
@@ -245,7 +278,22 @@ class AmazonOrdersCoordinator(DataUpdateCoordinator[AmazonOrdersData]):
         """Delete what was stored, when the config entry is removed."""
         await self._store.async_remove()
 
+    def _is_quiet(self) -> bool:
+        """Return True if Amazon should be left alone now."""
+        return in_quiet_hours(
+            dt_util.now().time().replace(tzinfo=None), self.quiet_start, self.quiet_end
+        )
+
     async def _async_update_data(self) -> AmazonOrdersData:
+        # In the quiet hours nothing is read, unless a package is out for
+        # delivery. The first update always reads, so that entities have data.
+        if (
+            self.data is not None
+            and not self._out_for_delivery(self.data)
+            and self._is_quiet()
+        ):
+            self.update_interval = self.idle_interval
+            return self.data
         try:
             orders = await self.client.async_get_orders()
             data = await self._async_read_packages(orders)
@@ -259,16 +307,19 @@ class AmazonOrdersCoordinator(DataUpdateCoordinator[AmazonOrdersData]):
         except AmazonError as err:
             raise UpdateFailed(f"Cannot read the orders from Amazon: {err}") from err
 
-        out_for_delivery = any(
-            (package.tracking.milestones_reached or 0) >= OUT_FOR_DELIVERY_MIN_STEPS
-            for package in data.in_transit
-        )
         self.update_interval = (
             self.active_interval
-            if out_for_delivery or data.pending
+            if self._out_for_delivery(data) or data.pending
             else self.idle_interval
         )
         return data
+
+    @staticmethod
+    def _out_for_delivery(data: AmazonOrdersData) -> bool:
+        return any(
+            (package.tracking.milestones_reached or 0) >= OUT_FOR_DELIVERY_MIN_STEPS
+            for package in data.in_transit
+        )
 
     async def _async_read_packages(self, orders: list[Order]) -> AmazonOrdersData:
         in_transit: list[Package] = []
@@ -355,6 +406,7 @@ class AmazonOrdersCoordinator(DataUpdateCoordinator[AmazonOrdersData]):
             in_transit=tuple(in_transit),
             last_delivered=last_delivered,
             pending=pending,
+            read_at=dt_util.utcnow(),
         )
 
     def _fire_event_if_changed(

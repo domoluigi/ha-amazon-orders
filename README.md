@@ -3,6 +3,22 @@
 Track the deliveries of your Amazon orders in Home Assistant: status, expected delivery and
 progress of each package, so you can build automations on them.
 
+> **This is a fork** of [LordHenry76/ha-amazon-orders](https://github.com/LordHenry76/ha-amazon-orders)
+> with changes for privacy and for fewer requests to Amazon. Upstream changes are merged
+> only after review. Differences from upstream:
+>
+> - **Recipient and address hidden by default.** Name, street and town of the recipient are
+>   left out of the attributes unless *Show recipient and address* is turned on in the options.
+> - **Personal attributes kept out of the recorder.** Order number, products, tracking link,
+>   tracking events and places, the list of packages and the address are shown on the
+>   dashboard but never written to the database.
+> - **Only the account id is stored** from the profile Amazon sends at sign-in: no names, no
+>   region, no device name.
+> - **Quiet hours** (default 23:00–07:00): Amazon is not checked at night, unless a package is
+>   already out for delivery.
+> - **"Last read from Amazon" sensor** (diagnostic, timestamp): tells when the orders were last
+>   read successfully, so an automation can warn if Amazon's pages change and reading stops.
+
 > **Early release.** Signing in, reading the orders and the entities work, and have been followed
 > on a real order through every step, from placed to delivered. Not observed yet: orders split
 > into several shipments, the live map Amazon shows for its own deliveries, and how the sign-in
@@ -35,7 +51,7 @@ Other Amazon sites are not offered in the setup form until someone has tested th
 ## Installation
 
 ### HACS (custom repository)
-1. HACS → ⋮ → **Custom repositories** → add `https://github.com/LordHenry76/ha-amazon-orders`, category **Integration**.
+1. HACS → ⋮ → **Custom repositories** → add `https://github.com/domoluigi/ha-amazon-orders`, category **Integration**.
 2. Install **Amazon Orders** and restart Home Assistant.
 3. **Settings → Devices & services → Add integration → Amazon Orders**.
 
@@ -139,7 +155,8 @@ and find/replace them in the file before pasting.
 
 ## Options
 
-**Configure** on the integration card sets how often Amazon is checked, in seconds:
+**Configure** on the integration card sets the quiet hours, whether the recipient and the
+address are shown (off by default), and how often Amazon is checked, in seconds:
 
 - the idle interval (default 900) is used normally;
 - the active interval (default 120) is used while a package has reached its third step, out for
