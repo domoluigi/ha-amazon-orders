@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import time, timedelta
+from datetime import date, datetime, time, timedelta
 from unittest.mock import patch
 
 import pytest
@@ -19,7 +19,7 @@ from custom_components.amazon_orders.api.exceptions import (
     AmazonCaptchaError,
     AmazonConnectionError,
 )
-from custom_components.amazon_orders.api.models import Order, Shipment
+from custom_components.amazon_orders.api.models import Order, Shipment, TrackingEvent
 from custom_components.amazon_orders.const import (
     CAPTCHA_BACKOFF,
     CONF_LOGIN_DATA,
@@ -33,7 +33,9 @@ from custom_components.amazon_orders.const import (
 from custom_components.amazon_orders.coordinator import (
     AmazonOrdersCoordinator,
     Package,
+    event_date,
     in_quiet_hours,
+    latest_delivered,
     shipment_key,
 )
 
@@ -471,3 +473,75 @@ async def test_quiet_hours_ignored_while_out_for_delivery(
 
     assert mock_amazon.get_orders.call_count == 2
     assert coordinator.update_interval == ACTIVE
+
+
+async def test_collected_package_counts_as_delivered(
+    hass: HomeAssistant, mock_amazon
+) -> None:
+    """A package collected at a pickup point or locker is done, like a delivered one."""
+    mock_amazon.get_orders.return_value = [make_order(1)]
+    collected = replace(
+        make_tracking("PICKED_UP", expected="Ritirato 6 ottobre"), last_milestone=None
+    )
+    mock_amazon.trackings[tracking_url(1)] = collected
+    coordinator = (await _setup(hass)).runtime_data
+
+    assert coordinator.data.in_transit == ()
+    assert coordinator.data.last_delivered.tracking.promise_message == (
+        "Ritirato 6 ottobre"
+    )
+    assert coordinator.data.last_delivered.progress == 100
+
+    # Like a delivered package, its page is not read again.
+    await coordinator.async_refresh()
+    assert mock_amazon.get_tracking.call_count == 1
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("mercoledì 8 ottobre", date(2026, 10, 8)),
+        ("domenica 4 ottobre", date(2026, 10, 4)),
+        ("Wednesday 7 October", date(2026, 10, 7)),
+        # A date after today is from the year before.
+        ("lunedì 28 dicembre", date(2025, 12, 28)),
+        ("oggi", None),
+        (None, None),
+    ],
+)
+def test_event_date(text: str | None, expected: date | None) -> None:
+    assert event_date(text, date(2026, 10, 10)) == expected
+
+
+def _delivered_on(day: str, hour: str) -> object:
+    return replace(
+        make_tracking(expected=f"Consegnato {day}"),
+        events=(TrackingEvent(day, hour, "Consegnato", None),),
+    )
+
+
+async def test_last_delivered_is_the_latest_delivery(
+    hass: HomeAssistant, mock_amazon
+) -> None:
+    """An order placed earlier can arrive later: the delivery date decides."""
+    # Newest order first, as on the orders list.
+    mock_amazon.get_orders.return_value = [make_order(1), make_order(2), make_order(3)]
+    mock_amazon.trackings[tracking_url(1)] = _delivered_on("mercoledì 7 ottobre", "15:48")
+    mock_amazon.trackings[tracking_url(2)] = _delivered_on("giovedì 8 ottobre", "10:05")
+    mock_amazon.trackings[tracking_url(3)] = _delivered_on("giovedì 8 ottobre", "9:12")
+    with patch("custom_components.amazon_orders.coordinator.dt_util.now") as now:
+        now.return_value = datetime(2026, 10, 10, 18, 0)
+        coordinator = (await _setup(hass)).runtime_data
+
+    assert coordinator.data.last_delivered.order_id == "123-0000002-7654321"
+
+
+def test_latest_delivered_without_dates() -> None:
+    """Without readable dates the order of the list is kept."""
+    undated = replace(make_tracking(), events=())
+    packages = [
+        Package("a", "1", None, None, None, tracking_url(1), (), undated),
+        Package("b", "2", None, None, None, tracking_url(2), (), undated),
+    ]
+    assert latest_delivered(packages, date(2026, 10, 10)).key == "a"
+    assert latest_delivered([], date(2026, 10, 10)) is None
