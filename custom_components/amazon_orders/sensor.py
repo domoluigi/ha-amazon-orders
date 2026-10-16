@@ -32,6 +32,19 @@ STATUS_IDLE = "idle"
 MAX_STATE_LENGTH = 255
 
 
+def expected_text(package: Package) -> str | None:
+    """Return Amazon's message about the delivery of a package.
+
+    The tracking page of a delivered package is read once and kept, so its
+    message is frozen on the day it was read: "Consegnato oggi" stays "oggi"
+    for good. The orders list is read at every update and dates the delivery
+    ("Consegnato 13 ottobre"), so for a delivered package it wins.
+    """
+    if package.tracking.is_delivered and package.status_text:
+        return package.status_text
+    return package.tracking.promise_message
+
+
 def package_attributes(package: Package | None) -> dict[str, Any]:
     """Return the details of a package, as attributes of an entity."""
     if package is None:
@@ -50,7 +63,7 @@ def package_attributes(package: Package | None) -> dict[str, Any]:
         "step_label": package.step_label,
         "progress": package.progress,
         "step_progress": package.tracking.percent_complete,
-        "expected": package.tracking.promise_message,
+        "expected": expected_text(package),
         "carrier": package.tracking.carrier,
         "status_text": package.status_text,
         "status_detail": package.status_detail,
@@ -175,9 +188,7 @@ SENSORS: tuple[AmazonOrdersSensorDescription, ...] = (
         key="last_delivered",
         translation_key="last_delivered",
         value_fn=lambda data: (
-            _text(data.last_delivered.tracking.promise_message)
-            if data.last_delivered
-            else None
+            _text(expected_text(data.last_delivered)) if data.last_delivered else None
         ),
         attributes_fn=lambda data: package_attributes(data.last_delivered),
     ),
