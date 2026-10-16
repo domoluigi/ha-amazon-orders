@@ -95,7 +95,10 @@ async def test_nothing_on_its_way(hass: HomeAssistant, mock_amazon) -> None:
 
 
 async def test_package_on_its_way(hass: HomeAssistant, mock_amazon) -> None:
-    mock_amazon.get_orders.return_value = [make_order(1), make_order(2)]
+    mock_amazon.get_orders.return_value = [
+        make_order(1),
+        make_order(2, status_text="Consegnato 4 ottobre"),
+    ]
     mock_amazon.trackings[tracking_url(1)] = make_tracking(
         "TEST_ON_ITS_WAY",
         steps=2,
@@ -213,6 +216,9 @@ async def test_entities_follow_the_updates(hass: HomeAssistant, mock_amazon) -> 
     entry = await _setup(hass)
     assert _state(hass, "packages_in_transit").state == "1"
 
+    mock_amazon.get_orders.return_value = [
+        make_order(1, status_text="Consegnato 4 ottobre")
+    ]
     mock_amazon.trackings[tracking_url(1)] = make_tracking()
     await entry.runtime_data.async_refresh()
     await hass.async_block_till_done()
@@ -221,3 +227,33 @@ async def test_entities_follow_the_updates(hass: HomeAssistant, mock_amazon) -> 
     assert _state(hass, "next_package_status").state == "idle"
     assert _state(hass, "last_delivered").state == "Consegnato 4 ottobre"
     assert _state(hass, "package_in_transit", "binary_sensor").state == "off"
+
+
+async def test_last_delivered_uses_the_dated_orders_list_text(
+    hass: HomeAssistant, mock_amazon
+) -> None:
+    """The tracking page read on delivery day says "today" for good: the list wins."""
+    mock_amazon.get_orders.return_value = [
+        make_order(1, status_text="Consegnato 13 ottobre")
+    ]
+    mock_amazon.trackings[tracking_url(1)] = make_tracking(expected="Consegnato oggi")
+    await _setup(hass)
+
+    delivered = _state(hass, "last_delivered")
+    assert delivered.state == "Consegnato 13 ottobre"
+    assert delivered.attributes["expected"] == "Consegnato 13 ottobre"
+
+
+async def test_package_on_its_way_keeps_the_tracking_message(
+    hass: HomeAssistant, mock_amazon
+) -> None:
+    """For a package not delivered yet the tracking page is read at every update."""
+    mock_amazon.get_orders.return_value = [make_order(1, status_text="In arrivo")]
+    mock_amazon.trackings[tracking_url(1)] = make_tracking(
+        "TEST_ON_ITS_WAY", steps=2, progress=50, expected="In arrivo domani"
+    )
+    await _setup(hass)
+
+    status = _state(hass, "next_package_status")
+    assert status.attributes["expected"] == "In arrivo domani"
+    assert _state(hass, "next_package_expected").state == "In arrivo domani"
